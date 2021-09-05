@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
+const debug = true;
 
 class WebViewExample extends StatefulWidget {
   final TargetPlatform? platform;
@@ -25,17 +29,94 @@ class _WebViewExampleState extends State<WebViewExample> {
   late String _localPath;
   late bool _permissionReady;
   var taskId;
+  var _status;
+  var _progressI;
+  ReceivePort _port = ReceivePort();
+
   @override
   void initState() {
     super.initState();
+
+    _bindBackgroundIsolate();
+
+    FlutterDownloader.registerCallback(downloadCallback);
+
+    _permissionReady = false;
+
     if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
     _prepare();
+    getMicrophonePer();
+  }
+
+
+
+  @override
+  void dispose() {
+    _unbindBackgroundIsolate();
+    super.dispose();
+  }
+
+  void _bindBackgroundIsolate() {
+    bool isSuccess = IsolateNameServer.registerPortWithName(
+        _port.sendPort, 'downloader_send_port');
+    if (!isSuccess) {
+      _unbindBackgroundIsolate();
+      _bindBackgroundIsolate();
+      return;
+    }
+    _port.listen((dynamic data) {
+      if (debug) {
+        print('UI Isolate Callback: $data');
+      }
+      String? id = data[0];
+      DownloadTaskStatus? status = data[1];
+      int? progress = data[2];
+
+      if (taskId != null && taskId!.isNotEmpty) {
+        final task = taskId!.firstWhere((taskId) => taskId == id);
+        setState(() {
+          _status = status;
+          _progressI = progress;
+        });
+      }
+    });
+  }
+
+  void _unbindBackgroundIsolate() {
+    IsolateNameServer.removePortNameMapping('downloader_send_port');
+  }
+
+  static void downloadCallback(
+      String id, DownloadTaskStatus status, int progress) {
+    if (debug) {
+      print(
+          'Background Isolate Callback: task ($id) is in status ($status) and process ($progress)');
+    }
+    final SendPort send =
+        IsolateNameServer.lookupPortByName('downloader_send_port')!;
+    send.send([id, status, progress]);
   }
 
   Future<Null> _prepare() async {
     _permissionReady = await _checkPermission();
     if (_permissionReady) {
+
       await _prepareSaveDir();
+    }
+  }
+
+  getMicrophonePer() async {
+    PermissionStatus status = await Permission.microphone.request();
+    print(status);
+    bool mic = await Permission.microphone.isGranted;
+    print('microphone permission? $mic');
+    try {
+      if (!mic) {
+        PermissionStatus status = await Permission.microphone.request();
+        print(status);
+      }
+    } catch (e) {
+      print("message $e");
     }
   }
 
@@ -43,8 +124,9 @@ class _WebViewExampleState extends State<WebViewExample> {
     if (widget.platform == TargetPlatform.android) {
       final status = await Permission.storage.status;
       if (status != PermissionStatus.granted) {
-        final result = await Permission.storage.request();
-        if (result == PermissionStatus.granted) {
+        var result = await Permission.storage.request();
+        if (result == PermissionStatus.granted ) {
+          print("storage True");
           return true;
         }
       } else {
@@ -116,6 +198,14 @@ class _WebViewExampleState extends State<WebViewExample> {
         openFileFromNotification: true);
   }
 
+  Future<bool> _openDownloadedFile() {
+    if (taskId != null) {
+      return FlutterDownloader.open(taskId: taskId);
+    } else {
+      return Future.value(false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,43 +239,58 @@ class _WebViewExampleState extends State<WebViewExample> {
       //     ],
       //   ),
       // ),
-      appBar: AppBar(
-        // leading: (url == 'https://daralmaarefschools.com/mob/')
-        //     ? Container()
-        //     : navigationControls(_controller.future),
-        centerTitle: false,
-        title: InkWell(
-          onTap: (){
-            url =
-            "https://daralmaarefschools.com/cp";
-            controller.loadUrl(url);
-            setState(() {});
-          },
-          child: Text((url == 'https://daralmaarefschools.com/mob/')
-              ? 'Sign In'
-              : 'My School'),
-        ),
-        actions: <Widget>[
-          FlatButton.icon(
-            onPressed: () {
-              isLangEng = !isLangEng;
-              url =
-              "https://daralmaarefschools.com/cp/${isLangEng ? "ar" : "en"}";
-              controller.loadUrl(url);
-              setState(() {});
-            },
-            icon: Icon(Icons.language_sharp, color: Colors.white),
-            label: Text(
-              isLangEng ? "English" : "عربي",
-              style: TextStyle(color: Colors.white),
-            ),
-          )
-        ],
-      ),
+      // appBar: AppBar(
+      //   // leading: (url == 'https://daralmaarefschools.com/mob/')
+      //   //     ? Container()
+      //   //     : navigationControls(_controller.future),
+      //   centerTitle: false,
+      //   title: InkWell(
+      //     onTap: (){
+      //       url =
+      //       "https://daralmaarefschools.com/cp";
+      //       controller.loadUrl(url);
+      //       setState(() {});
+      //     },
+      //     child: Text((url == 'https://daralmaarefschools.com/mob/')
+      //         ? 'Sign In'
+      //         : 'My School'),
+      //   ),
+      //   actions: <Widget>[
+      //     FlatButton.icon(
+      //       onPressed: () {
+      //         isLangEng = !isLangEng;
+      //         url =
+      //         "https://daralmaarefschools.com/cp/${isLangEng ? "ar" : "en"}";
+      //         controller.loadUrl(url);
+      //         setState(() {});
+      //       },
+      //       icon: Icon(Icons.language_sharp, color: Colors.white),
+      //       label: Text(
+      //         isLangEng ? "English" : "عربي",
+      //         style: TextStyle(color: Colors.white),
+      //       ),
+      //     ),
+      //     FlatButton.icon(
+      //       onPressed: () {
+      //         if(taskId !=null) {
+      //           _openDownloadedFile();
+      //         }
+      //       },
+      //       icon: Icon(Icons.insert_drive_file, color: Colors.white),
+      //       label: Text(
+      //         "open file" ,
+      //         style: TextStyle(color: Colors.white),
+      //       ),
+      //     )
+      //   ],
+      // ),
       body: Builder(builder: (BuildContext context) {
         return Column(
           children: [
-            // Text("$url"),
+            Container(
+              color: Colors.green,
+              height: 22,
+            ),
             Expanded(
               child: WebView(
                 initialUrl: url,
@@ -196,6 +301,12 @@ class _WebViewExampleState extends State<WebViewExample> {
                 },
                 onProgress: (int progress) {
                   print("WebView is loading (progress : $progress%)");
+                  if (progress == 100) {
+                    print("Done!! $taskId");
+                    Timer(Duration(seconds: 1), () {
+                      _openDownloadedFile();
+                    });
+                  }
                 },
                 javascriptChannels: <JavascriptChannel>{
                   _toasterJavascriptChannel(context),
@@ -205,7 +316,7 @@ class _WebViewExampleState extends State<WebViewExample> {
 
                   setState(() {});
                   if (request.url.endsWith('.pdf')) {
-                  //  _requestDownload(url);
+                    _requestDownload(url);
                   }
                   print('allowing navigation to ${request.url}');
                   return NavigationDecision.navigate;
