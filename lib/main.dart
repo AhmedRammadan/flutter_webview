@@ -140,7 +140,7 @@ class MyApp extends StatelessWidget {
     final platform = Theme.of(context).platform;
     return new MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Flutter Demo',
+      title: 'dar almaaref schools',
       theme: new ThemeData(
         primarySwatch: Colors.blue,
       ),

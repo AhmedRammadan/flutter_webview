@@ -25,7 +25,7 @@ class _WebViewExampleState extends State<WebViewExample> {
   late WebViewController controller;
   bool isLoading = true;
   bool isLangEng = true;
-  var url = 'https://daralmaarefschools.com/mob/';
+  var url = 'https://emanage.net/mob';
   late String _localPath;
   late bool _permissionReady;
   var taskId;
