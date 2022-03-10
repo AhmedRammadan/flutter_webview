@@ -34,7 +34,7 @@
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>this application needs access to the microphone</string>
+	<string>Need microphone access for uploading homework</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
